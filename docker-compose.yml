@@ -1,0 +1,66 @@
+version: "3.9"
+
+services:
+  # ── Lead Bot API ─────────────────────────────────────────────────────────
+  leadbot:
+    build: .
+    container_name: phoenix_leadbot
+    restart: always
+    env_file: .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      - nginx
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # ── Streamlit Dashboard ───────────────────────────────────────────────────
+  dashboard:
+    image: python:3.11-slim
+    container_name: phoenix_dashboard
+    restart: always
+    env_file: .env
+    environment:
+      - API_BASE_URL=http://leadbot:8000
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./app/dashboard:/app/dashboard
+      - ./requirements.txt:/app/requirements.txt
+    working_dir: /app
+    command: >
+      bash -c "pip install streamlit pandas requests -q &&
+               streamlit run dashboard/streamlit_app.py
+               --server.port 8501
+               --server.address 0.0.0.0
+               --server.headless true"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+  # ── Nginx reverse proxy ───────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: phoenix_nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deployment/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./deployment/ssl:/etc/nginx/ssl:ro    # place your SSL certs here
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
